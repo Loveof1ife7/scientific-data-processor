@@ -30,7 +30,7 @@ pip install -r requirements.txt
     "total_samples": 100,
     "vars": ["Scalar"],
     "data_path": {
-      "Scalar": "./Data/your_data/data_"
+      "Scalar": "./your_data/"
     },
     "_comment": "Your dataset description"
   }
