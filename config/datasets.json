@@ -1,0 +1,34 @@
+{
+    "Supernova": {
+        "dim": [
+            432,
+            432,
+            432
+        ],
+        "total_samples": 1,
+        "vars": [
+            "Scalar"
+        ],
+        "data_path": {
+            "Scalar": "./datasets/supernova/E_"
+        },
+        "file_template": "{t:04d}.raw",
+        "start_index": 1,
+        "_comment": "available total_time_samples is 60"
+    },
+    "Tangaroa": {
+        "dim": [
+            300,
+            180,
+            120
+        ],
+        "total_samples": 150,
+        "vars": [
+            "VTM"
+        ],
+        "data_path": {
+            "VTM": "./datasets/tangaroa/tangaroa-"
+        },
+        "_comment": "available total_time_samples is 100"
+    }
+}

@@ -15,6 +15,7 @@ class VolumeDataLoader:
         self.variables = dataset_config["vars"]
         self.data_paths = dataset_config["data_path"]
         self.total_samples = dataset_config["total_samples"]
+        self.start_idx = dataset_config.get("start_idx", 1)
         
     def read_raw_file(self, filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
         """

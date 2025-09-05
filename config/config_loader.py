@@ -33,7 +33,7 @@ class ConfigLoader:
                 "total_samples": 1,
                 "vars": ["Scalar"],
                 "data_path": {
-                    "Scalar": "./Data/supernova/E_"
+                    "Scalar": "~/datasets/supernova/E_"
                 },
                 "_comment": "available total_time_samples is 60"
             },
@@ -42,7 +42,7 @@ class ConfigLoader:
                 "total_samples": 150,
                 "vars": ["VTM"],
                 "data_path": {
-                    "VTM": "./Data/tangaroa/tangaroa-"
+                    "VTM": "~/datasets/tangaroa/tangaroa-"
                 },
                 "_comment": "available total_time_samples is 100"
             }
