@@ -1,16 +1,31 @@
     # 导入必要的模块
 import sys
 import os
+import time
+import numpy as np
 from core.fourier_analyzer import FourierAnalyzer, FourierVisualizer
+from volume_project import VolumeDataProject
 
-class SuppernovaFourierProcessor:
-    """Supernova数据的傅立叶分析处理器"""
+class FourierProcessor:
+    """Volumes数据的傅立叶分析处理器"""
     
     def __init__(self, project):
         self.project = project
         self.fourier_analyzer = FourierAnalyzer()
         self.visualizer = FourierVisualizer()
-    
+    def time_fft(self, dataset_name: str = "Supernova", 
+                             variable: str = "Scalar", sample_id: int = 1):
+        if self.project.data_loader is None:
+            self.project.load_dataset(dataset_name)
+        
+        volume = self.project.data_loader.load_volume(variable, sample_id)
+        print(f"数据加载完成: {volume.shape}")
+        
+        start_time = time.time()
+        fft_result = self.fourier_analyzer.compute_3d_fft(volume)
+        print(f"FFT计算完成, 耗时: {time.time() - start_time:.4f}秒")
+
+        return
     def full_fourier_analysis(self, dataset_name: str = "Supernova", 
                              variable: str = "Scalar", sample_id: int = 1):
         """对Supernova数据进行完整的傅立叶分析"""
@@ -25,8 +40,9 @@ class SuppernovaFourierProcessor:
         print(f"数据加载完成: {volume.shape}")
         
         # 2. 计算FFT
+        start_time = time.time()
         fft_result = self.fourier_analyzer.compute_3d_fft(volume)
-        print("FFT计算完成")
+        print(f"FFT计算完成, 耗时: {time.time() - start_time:.4f}秒")
         
         # 3. 计算功率谱
         power_spectrum = self.fourier_analyzer.compute_power_spectrum()
@@ -97,20 +113,30 @@ class SuppernovaFourierProcessor:
                 'high_pass': high_pass_data
             }
         }
-
-
-# 使用示例脚本
-def supernova_fourier_example():
-    """Supernova傅立叶分析使用示例"""
+def supernova_time_fft():
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    from main import VolumeDataProject
+   
+    # 创建项目实例
+    project = VolumeDataProject()
+    
+    # 创建傅立叶处理器
+    fourier_processor = FourierProcessor(project)
+
+    try:
+        fourier_processor.time_fft()
+    except Exception as e:
+        print(f"时间FFT过程中出现错误: {e}")
+
+def supernova_full_fourier_analysis():
+    """Supernova傅立叶分析使用示例"""
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
     # 创建项目实例
     project = VolumeDataProject()
     
     # 创建傅立叶处理器
-    fourier_processor = SuppernovaFourierProcessor(project)
+    fourier_processor = FourierProcessor(project)
     
     # 执行完整分析
     try:
@@ -119,7 +145,6 @@ def supernova_fourier_example():
         
         # 可以进一步处理结果
         # 例如保存关键数据
-        import numpy as np
         np.save('supernova_power_spectrum.npy', results['power_spectrum'])
         print("功率谱已保存为 'supernova_power_spectrum.npy'")
         
@@ -129,4 +154,4 @@ def supernova_fourier_example():
 
 
 if __name__ == "__main__":
-    supernova_fourier_example()
+    supernova_time_fft()

@@ -1,0 +1,136 @@
+#!/usr/bin/env pvpython
+# -*- coding: utf-8 -*-
+"""
+Generate multi-view RGB + camera poses from a VTI volume for 3DGS/NeRF training.
+
+Usage:
+pvpython gen_3dgs_dataset_from_vti.py \
+  --vti /path/to/kingsnake.vti \
+  --out ./dataset \
+  --num 60 --w 1600 --h 1200 --vfov 45 --elev 15 --radius_scale 1.4
+"""
+
+import os, json, math, argparse
+import numpy as np
+from paraview.simple import *
+
+def unit(v): v = np.asarray(v, float); return v/np.linalg.norm(v)
+
+def c2w_from_lookat(eye, center, up_world=(0,1,0)):
+    # OpenGL/NeRF 约定：摄像机坐标 x 右、y 上、z 指向 -前方
+    forward = unit(np.array(center) - np.array(eye))      # 指向目标的方向
+    right   = unit(np.cross(forward, unit(up_world)))
+    up      = unit(np.cross(right, forward))
+    # c2w：列为基向量，[right, up, -forward, eye]
+    c2w = np.eye(4, dtype=float)
+    c2w[0:3,0] = right
+    c2w[0:3,1] = up
+    c2w[0:3,2] = -forward
+    c2w[0:3,3] = np.array(eye, float)
+    return c2w
+
+def intrinsics_from_vfov(vfov_deg, w, h):
+    vfov = math.radians(vfov_deg)
+    fy = (h/2.0) / math.tan(vfov/2.0)
+    fx = fy * (w / float(h))   # 等像素假设
+    cx, cy = (w-1)/2.0, (h-1)/2.0
+    return fx, fy, cx, cy
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--vti", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--num", type=int, default=60, help="frames on the orbit")
+    ap.add_argument("--w", type=int, default=1600)
+    ap.add_argument("--h", type=int, default=1200)
+    ap.add_argument("--vfov", type=float, default=45.0, help="vertical FOV in degrees")
+    ap.add_argument("--elev", type=float, default=15.0, help="elevation in degrees")
+    ap.add_argument("--radius_scale", type=float, default=1.4, help="orbit radius multiplier")
+    args = ap.parse_args()
+
+    out_img_dir = os.path.join(args.out, "images")
+    os.makedirs(out_img_dir, exist_ok=True)
+
+    # 读取数据
+    src = OpenDataFile(args.vti)     # 也可 XMLImageDataReader(FileName=[...])
+    Show(src)
+    rv = GetActiveViewOrCreate('RenderView')
+    rv.ViewSize = [args.w, args.h]
+    rv.UseColorPaletteForBackground = 0
+    rv.Background = [0,0,0]          # 黑底方便训练
+    rv.CameraParallelProjection = 0
+    rv.CameraViewAngle = args.vfov   # 设置垂直 FOV
+
+    # 体渲染显示
+    disp = GetDisplayProperties(src, view=rv)
+    disp.Representation = 'Volume'
+    ColorBy(disp, ('POINTS', src.PointData.GetArrayName(0)))  # 选第一个点标量
+    lut = GetColorTransferFunction(src.PointData.GetArrayName(0))
+    pwf = GetOpacityTransferFunction(src.PointData.GetArrayName(0))
+    # === 在这里按你数据调整色/透明度（示例：uint8 起步）===
+    lut.RescaleTransferFunction(0, 255)
+    pwf.RemoveAllPoints()
+    for x,y in [(0,0.0),(30,0.0),(80,0.03),(140,0.08),(200,0.16)]:
+        pwf.AddPoint(x, y)
+    # 体渲染细节
+    rv.Update()
+    disp.Shade = 1
+    disp.ScalarOpacityUnitDistance = 1.0
+    rv.LODThreshold = 0.0
+
+    # 计算包围盒中心和轨道半径
+    info = src.GetDataInformation()
+    b = info.GetBounds()  # (xmin,xmax,ymin,ymax,zmin,zmax)
+    center = np.array([(b[0]+b[1])/2.0, (b[2]+b[3])/2.0, (b[4]+b[5])/2.0], float)
+    ext = np.array([b[1]-b[0], b[3]-b[2], b[5]-b[4]], float)
+    R = args.radius_scale * 0.5 * float(np.linalg.norm(ext))  # 以对角线为基准
+    elev_rad = math.radians(args.elev)
+    up_world = np.array([0,1,0], float)
+
+    # 相机内参
+    fx, fy, cx, cy = intrinsics_from_vfov(args.vfov, args.w, args.h)
+
+    frames = []
+    for i in range(args.num):
+        theta = 2.0*math.pi * (i/float(args.num))
+        # 圆轨道（XY 平面绕中心），加一个固定仰角
+        x = center[0] + R*math.cos(theta)
+        y = center[1] + R*math.sin(theta)
+        z = center[2] + R*math.sin(elev_rad)
+        eye = [x,y,z]
+        focal = center.tolist()
+
+        # 设置相机
+        rv.CameraPosition = eye
+        rv.CameraFocalPoint = focal
+        rv.CameraViewUp = up_world.tolist()
+        rv.CameraViewAngle = args.vfov
+        ResetCamera(False)   # 不重置包围盒，只更新矩阵
+        Render()
+
+        # 保存图像
+        fname = f"frame_{i:03d}.png"
+        fpath = os.path.join(out_img_dir, fname)
+        SaveScreenshot(fpath, rv, ImageResolution=[args.w, args.h])
+        print("Saved", fpath)
+
+        # 保存位姿（NeRF/3DGS 常用 c2w）
+        c2w = c2w_from_lookat(eye, focal, up_world)
+        frames.append({
+            "file_path": f"images/{fname}",
+            "transform_matrix": c2w.tolist()
+        })
+
+    meta = {
+        "w": args.w, "h": args.h,
+        "fl_x": fx, "fl_y": fy, "cx": cx, "cy": cy,
+        "camera_model": "OPENCV",
+        "frames": frames
+    }
+    with open(os.path.join(args.out, "transforms_nerf.json"), "w") as f:
+        json.dump(meta, f, indent=2)
+    print("Wrote", os.path.join(args.out, "transforms_nerf.json"))
+
+if __name__ == "__main__":
+    main()
+
